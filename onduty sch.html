@@ -1,0 +1,347 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>輪值班表查詢系統 (115年6月 - 117年12月)</title>
+    <style>
+        body {
+            font-family: "Microsoft JhengHei", sans-serif;
+            margin: 20px;
+            background-color: #f4f7f6;
+            color: #333;
+        }
+        h1 {
+            text-align: center;
+            color: #2c3e50;
+        }
+        .controls {
+            text-align: center;
+            margin-bottom: 20px;
+            background: #fff;
+            padding: 15px;
+            border-radius: 8px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+            max-width: 750px;
+            margin-left: auto;
+            margin-right: auto;
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            align-items: center;
+            gap: 10px;
+        }
+        .control-group {
+            display: flex;
+            align-items: center;
+            margin: 5px 10px;
+        }
+        select {
+            padding: 8px 12px;
+            font-size: 16px;
+            margin-left: 8px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+        }
+        .legend {
+            text-align: center;
+            margin-bottom: 15px;
+            font-size: 14px;
+        }
+        .legend span {
+            display: inline-block;
+            margin: 4px 8px;
+            padding: 4px 10px;
+            border-radius: 4px;
+            border: 1px solid #ccc;
+        }
+        table {
+            width: 100%;
+            max-width: 600px;
+            margin: 0 auto;
+            border-collapse: collapse;
+            background: #fff;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+        th, td {
+            padding: 12px;
+            text-align: center;
+            border: 1px solid #ddd;
+        }
+        th {
+            background-color: #3498db;
+            color: white;
+        }
+        tr:nth-child(even) {
+            background-color: #f9f9f9;
+        }
+        tr:hover {
+            background-color: #f1f1f1;
+        }
+        .weekend {
+            background-color: #e8f5e9 !important;
+        }
+        .national-holiday {
+            background-color: #e1bee7 !important;
+        }
+        /* 泛用型的高亮標註樣式 */
+        .highlight-person {
+            background-color: #ffe6e6 !important;
+            color: #d8000c !important;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+
+    <h1>📅 輪值班表查詢</h1>
+    
+    <div class="controls">
+        <div class="control-group">
+            <label for="yearSelect">年份：</label>
+            <select id="yearSelect">
+                <option value="2026">民國 115 年</option>
+                <option value="2027" selected>民國 116 年</option>
+                <option value="2028">民國 117 年</option>
+            </select>
+        </div>
+
+        <div class="control-group">
+            <label for="monthSelect">月份：</label>
+            <select id="monthSelect"></select>
+        </div>
+
+        <div class="control-group">
+            <label for="personSelect">特別標註：</label>
+            <select id="personSelect">
+                <option value="0" selected>無 (不標註)</option>
+                <!-- JS 動態生成 1~20 號人員 -->
+            </select>
+        </div>
+    </div>
+
+    <div class="legend">
+        <span style="background-color: #e8f5e9;">一般假日 (週末)</span>
+        <span style="background-color: #e1bee7;">國定假日</span>
+        <span id="legendHighlight" style="background-color: #ffe6e6; color: #d8000c; font-weight: bold; display: none;"></span>
+    </div>
+
+    <table id="scheduleTable">
+        <thead>
+            <tr>
+                <th>日期</th>
+                <th>星期</th>
+                <th>輪值人員</th>
+                <th>備註</th>
+            </tr>
+        </thead>
+        <tbody id="tableBody">
+        </tbody>
+    </table>
+
+    <script>
+        const names = {
+            1: "陳金城", 2: "鄭志偉", 3: "周柏彰", 4: "林政宏", 5: "洪峻羿",
+            6: "林俊", 7: "石兆珀", 8: "蔡承裕", 9: "謝佳霖", 10: "郭晉元",
+            11: "黃志中", 12: "陳莒揚", 13: "陳效杰", 14: "張家瑋", 15: "黃評仕",
+            16: "許凱嵐", 17: "楊偉權", 18: "趙冠羽", 19: "翁明祺", 20: "黃維堅"
+        };
+
+        const weekdays = ["日", "一", "二", "三", "四", "五", "六"];
+
+        // 國定假日對應名稱字典
+        const nationalHolidays = {
+            // 2026 (115年)
+            "2026-01-01": "元旦", 
+            "2026-02-16": "農曆春節", "2026-02-17": "農曆春節", "2026-02-18": "農曆春節", "2026-02-19": "農曆春節", "2026-02-20": "農曆春節", 
+            "2026-02-28": "和平紀念日", 
+            "2026-04-03": "兒童節/清明節連假", "2026-04-04": "兒童節", "2026-04-05": "清明節", "2026-04-06": "兒童節/清明節連假", 
+            "2026-05-01": "勞動節", 
+            "2026-06-19": "端午節", 
+            "2026-09-25": "中秋節", "2026-09-28": "中秋節(補假)", 
+            "2026-10-10": "國慶日","2026-10-9": "國慶日(補假)",
+            "2026-10-25": "光復節","2026-10-26": "光復節(補假)",
+            "2026-12-25": "行憲紀念日",
+            
+            // 2027 (116年)
+            "2027-01-01": "元旦", 
+            "2027-02-05": "除夕", "2027-02-06": "農曆春節", "2027-02-07": "農曆春節", "2027-02-08": "農曆春節", "2027-02-09": "農曆春節(補假)", "2027-02-10": "農曆春節(補假)", 
+            "2027-02-28": "和平紀念日", "2027-03-01": "和平紀念日(補假)", 
+            "2027-04-04": "兒童節/清明節", "2027-04-05": "清明節(補假)", "2027-04-06": "清明節(補假)", 
+            "2027-06-09": "端午節", 
+            "2027-09-15": "中秋節", 
+            "2027-10-10": "國慶日", "2027-10-11": "國慶日(補假)", 
+            
+            // 2028 (117年) 預估範例
+            "2028-01-01": "元旦", 
+            "2028-01-25": "除夕", "2028-01-26": "農曆春節", "2028-01-27": "農曆春節", "2028-01-28": "農曆春節",
+            "2028-02-28": "和平紀念日", 
+            "2028-04-04": "兒童節", "2028-04-05": "清明節", 
+            "2028-05-01": "勞動節", 
+            "2028-05-28": "端午節", 
+            "2028-10-03": "中秋節", 
+            "2028-10-10": "國慶日"
+        };
+
+        const scheduleData = {};
+        const startDate = new Date(2026, 5, 1);
+        const endDate = new Date(2028, 11, 31);
+        
+        let currentDate = new Date(startDate);
+        let prevPerson = 9;
+
+        // 預先計算所有日期的排班資料
+        while (currentDate <= endDate) {
+            let y = currentDate.getFullYear();
+            let m = currentDate.getMonth() + 1;
+            let d = currentDate.getDate();
+            let dayOfWeek = currentDate.getDay();
+
+            let fullDateStr = y + "-" + String(m).padStart(2, '0') + "-" + String(d).padStart(2, '0');
+
+            let nextPerson = prevPerson + 1;
+            let isSpecial = false;
+            
+            if (d === 21) {
+                nextPerson = prevPerson + 6;
+                isSpecial = true;
+            }
+
+            nextPerson = nextPerson % 20;
+            if (nextPerson === 0) nextPerson = 20;
+
+            let isWeekend = (dayOfWeek === 0 || dayOfWeek === 6);
+            let holidayName = nationalHolidays[fullDateStr] || "";
+
+            let monthKey = y + "-" + String(m).padStart(2, '0');
+            if (!scheduleData[monthKey]) {
+                scheduleData[monthKey] = [];
+            }
+            
+            scheduleData[monthKey].push({
+                day: String(d).padStart(2, '0'),
+                weekDay: weekdays[dayOfWeek],
+                person: nextPerson,
+                special: isSpecial,
+                isWeekend: isWeekend,
+                holidayName: holidayName
+            });
+
+            prevPerson = nextPerson;
+            currentDate.setDate(currentDate.getDate() + 1);
+        }
+
+        const yearSelect = document.getElementById('yearSelect');
+        const monthSelect = document.getElementById('monthSelect');
+        const personSelect = document.getElementById('personSelect');
+        const tableBody = document.getElementById('tableBody');
+        const legendHighlight = document.getElementById('legendHighlight');
+
+        // 初始化人員選單
+        function initPersonSelect() {
+            for (let i = 1; i <= 20; i++) {
+                let option = document.createElement("option");
+                option.value = i;
+                option.textContent = `${i} 號 - ${names[i]}`;
+                personSelect.appendChild(option);
+            }
+        }
+
+        // 更新月份選單
+        function updateMonthOptions() {
+            const selectedYear = parseInt(yearSelect.value);
+            monthSelect.innerHTML = "";
+            
+            let startMonth = (selectedYear === 2026) ? 6 : 1;
+            for (let i = startMonth; i <= 12; i++) {
+                let option = document.createElement("option");
+                option.value = String(i).padStart(2, '0');
+                option.textContent = i + " 月";
+                monthSelect.appendChild(option);
+            }
+            renderTable();
+        }
+
+        // 渲染表格
+        function renderTable() {
+            const y = yearSelect.value;
+            const m = monthSelect.value;
+            const monthKey = y + "-" + m;
+            const twYear = parseInt(y) - 1911;
+            
+            const highlightId = parseInt(personSelect.value);
+
+            // 更新圖例說明
+            if (highlightId > 0) {
+                legendHighlight.style.display = "inline-block";
+                legendHighlight.textContent = `⭐ 特別標註：${names[highlightId]}`;
+            } else {
+                legendHighlight.style.display = "none";
+            }
+
+            tableBody.innerHTML = ""; 
+
+            if (scheduleData[monthKey]) {
+                scheduleData[monthKey].forEach(entry => {
+                    let tr = document.createElement("tr");
+                    let notes = [];
+                    
+                    if (entry.holidayName) {
+                        tr.classList.add("national-holiday");
+                        notes.push(entry.holidayName);
+                    } else if (entry.isWeekend) {
+                        tr.classList.add("weekend");
+                    }
+
+                    if (entry.special) {
+                        notes.push("每月21日跳班 (+6)");
+                    }
+                    
+                    // 判斷是否為使用者選定的特別標註人員
+                    if (entry.person === highlightId) {
+                        tr.classList.add("highlight-person");
+                    }
+
+                    let tdDate = document.createElement("td");
+                    tdDate.textContent = twYear + " / " + m + " / " + entry.day;
+
+                    let tdWeekDay = document.createElement("td");
+                    tdWeekDay.textContent = entry.weekDay;
+
+                    let tdPerson = document.createElement("td");
+                    if (entry.person === highlightId) {
+                        tdPerson.innerHTML = `⭐ ${entry.person} 號 - ${names[entry.person]}`;
+                    } else {
+                        tdPerson.textContent = `${entry.person} 號 - ${names[entry.person]}`;
+                    }
+
+                    let tdNote = document.createElement("td");
+                    tdNote.textContent = notes.join("、");
+
+                    tr.appendChild(tdDate);
+                    tr.appendChild(tdWeekDay);
+                    tr.appendChild(tdPerson);
+                    tr.appendChild(tdNote);
+                    tableBody.appendChild(tr);
+                });
+            } else {
+                let tr = document.createElement("tr");
+                let td = document.createElement("td");
+                td.colSpan = 4;
+                td.textContent = "此月份無資料。";
+                tr.appendChild(td);
+                tableBody.appendChild(tr);
+            }
+        }
+
+        // 綁定事件監聽
+        yearSelect.addEventListener('change', updateMonthOptions);
+        monthSelect.addEventListener('change', renderTable);
+        personSelect.addEventListener('change', renderTable);
+
+        // 頁面載入時初始化
+        initPersonSelect();
+        updateMonthOptions();
+    </script>
+</body>
+</html>
