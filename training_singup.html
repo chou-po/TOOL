@@ -61,6 +61,7 @@ const API='https://script.google.com/macros/s/AKfycbyMzJSOkEvOT0qZKvGXvUVFDojnSU
 const $=id=>document.getElementById(id);
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 let dates=[],list=[],adm=[],pw='';
+const un=p=>{const s=new Set(adm.filter(x=>x.unit===p.unit).map(x=>x.role));return s.size>1?p.role+p.unit:p.unit;};
 
 async function call(body){
   $('busy').style.display='block';
@@ -76,14 +77,15 @@ const dateOpts=(ph,sel)=>`<option value="">${ph}</option>`+dates.map(d=>`<option
   const j=await call({action:'init'}); if(!j) return; dates=j.dates;
   const g={}; j.units.forEach(u=>(g[u.role]=g[u.role]||[]).push(u.unit));
   $('unit').innerHTML='<option value="">請選擇單位</option>'+Object.keys(g).map(r=>
-    `<optgroup label="${esc(r)}">`+g[r].map(u=>`<option>${esc(u)}</option>`).join('')+'</optgroup>').join('');
+    `<optgroup label="${esc(r)}">`+g[r].map(u=>`<option value="${esc(r+'|'+u)}">${esc(u)}</option>`).join('')+'</optgroup>').join('');
 })();
 
 /* ---------- 一般人:報名 ---------- */
 async function loadList(){
   const unit=$('unit').value;
   if(!unit){ $('pubArea').hidden=true; return; }
-  const j=await call({action:'list',unit}); if(!j) return;
+  const [role,un]=unit.split('|');
+  const j=await call({action:'list',role,unit:un}); if(!j) return;
   list=j.people; dates=j.dates; renderList();
 }
 function renderList(){
@@ -108,7 +110,7 @@ async function savePub(){
     if(n.date!==o.date||n.veg!==o.veg||n.leave!==o.leave) items.push(n);
   });
   if(!items.length) return alert('沒有任何變更');
-  const j=await call({action:'save',unit:$('unit').value,items}); if(!j) return;
+  const j=await call({action:'save',role:$('unit').value.split('|')[0],unit:$('unit').value.split('|')[1],items}); if(!j) return;
   alert(`已送出 ${items.length} 筆變更`); loadList();
 }
 
@@ -122,14 +124,14 @@ async function login(){
 const sel=()=>adm.filter(p=>p.date&&p.date===$('admDate').value);
 function showDate(){
   const d=$('admDate').value, ps=sel(); $('pTitle').textContent=d?`訓練日期:${d}`:'';
-  $('doneTb').innerHTML=ps.map(p=>`<tr><td>${esc(p.unit)}</td><td>${esc(p.title)}</td><td>${esc(p.name)}</td>
+  $('doneTb').innerHTML=ps.map(p=>`<tr><td>${esc(un(p))}</td><td>${esc(p.title)}</td><td>${esc(p.name)}</td>
     <td><input type="checkbox" ${p.done?'checked':''} onchange="setDone('${esc(p.id)}',this)"></td></tr>`).join('')
     ||'<tr><td colspan="4">該梯次目前無人報名</td></tr>';
   $('signTb').innerHTML=signRows(ps);
 }
 function signRows(ps){
   const rem=p=>[p.veg?'素食':'',p.leave].filter(Boolean).join(' / ');
-  let h=ps.map((p,i)=>`<tr><td>${i+1}</td><td>${esc(p.unit)}</td><td>${esc(p.title)}</td><td>${esc(p.name)}</td><td></td><td></td><td>${esc(rem(p))}</td></tr>`).join('');
+  let h=ps.map((p,i)=>`<tr><td>${i+1}</td><td>${esc(un(p))}</td><td>${esc(p.title)}</td><td>${esc(p.name)}</td><td></td><td></td><td>${esc(rem(p))}</td></tr>`).join('');
   for(let i=0;i<5;i++) h+=`<tr style="height:42px"><td>${ps.length+i+1}</td><td></td><td></td><td></td><td></td><td></td><td></td></tr>`;
   return h;
 }
@@ -157,6 +159,6 @@ function exportSign(){
 function exportDone(){
   const ps=adm.filter(p=>p.done); if(!ps.length) return alert('目前尚無完訓人員');
   word(`<h3 style="text-align:center">金門縣消防人力動員教育訓練 完訓人員名單</h3><table><tr><th>單位</th><th>職稱</th><th>姓名</th><th>完訓日期</th></tr>`+
-    ps.map(p=>`<tr><td>${esc(p.unit)}</td><td>${esc(p.title)}</td><td>${esc(p.name)}</td><td>${esc(p.date||'未記錄')}</td></tr>`).join('')+'</table>','完訓人員名單.doc');
+    ps.map(p=>`<tr><td>${esc(un(p))}</td><td>${esc(p.title)}</td><td>${esc(p.name)}</td><td>${esc(p.date||'未記錄')}</td></tr>`).join('')+'</table>','完訓人員名單.doc');
 }
 </script></body></html>
