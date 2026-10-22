@@ -19,9 +19,7 @@ body{padding:16px 0;font-family:"Microsoft JhengHei",sans-serif}
 
 <div class="tab-pane fade show active no-print" id="pubTab">
  <div class="row g-2 mb-3">
-  <div class="col-md-4"><label class="form-label fw-bold">選擇單位</label><select id="unit" class="form-select border-dark"></select></div>
-  <div class="col-md-3"><label class="form-label fw-bold">單位通行碼</label><input id="code" type="password" class="form-control border-dark"></div>
-  <div class="col-md-2 align-self-end"><button class="btn btn-primary w-100" onclick="loadList()">查詢人員</button></div>
+  <div class="col-md-4"><label class="form-label fw-bold">選擇單位</label><select id="unit" class="form-select border-dark" onchange="loadList()"></select></div>
  </div>
  <div id="pubArea" hidden>
   <div class="card bg-light mb-3"><div class="card-body row g-2 align-items-end">
@@ -83,9 +81,9 @@ const dateOpts=(ph,sel)=>`<option value="">${ph}</option>`+dates.map(d=>`<option
 
 /* ---------- 一般人:報名 ---------- */
 async function loadList(){
-  const unit=$('unit').value, code=$('code').value.trim();
-  if(!unit||!code) return alert('請選擇單位並輸入通行碼');
-  const j=await call({action:'list',unit,code}); if(!j) return;
+  const unit=$('unit').value;
+  if(!unit){ $('pubArea').hidden=true; return; }
+  const j=await call({action:'list',unit}); if(!j) return;
   list=j.people; dates=j.dates; renderList();
 }
 function renderList(){
@@ -110,7 +108,7 @@ async function savePub(){
     if(n.date!==o.date||n.veg!==o.veg||n.leave!==o.leave) items.push(n);
   });
   if(!items.length) return alert('沒有任何變更');
-  const j=await call({action:'save',unit:$('unit').value,code:$('code').value.trim(),items}); if(!j) return;
+  const j=await call({action:'save',unit:$('unit').value,items}); if(!j) return;
   alert(`已送出 ${items.length} 筆變更`); loadList();
 }
 
