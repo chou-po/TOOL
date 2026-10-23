@@ -43,21 +43,26 @@ body{padding:16px 0;font-family:"Microsoft JhengHei",sans-serif}
    <div class="col-md-3"><select id="admDate" class="form-select border-dark" onchange="showDate()"></select></div>
    <div class="col-md-9"><button class="btn btn-info text-white" onclick="exportSign()">匯出簽到表 Word</button>
     <button class="btn btn-secondary" onclick="window.print()">列印簽到表</button>
-    <button class="btn btn-info text-white" onclick="exportDone()">匯出完訓名單 Word</button></div>
+    <button class="btn btn-info text-white" onclick="exportDone()">匯出完訓名單 Word</button>
+    <button class="btn btn-warning" onclick="exportLeave()">匯出義消公假名單 Excel</button></div>
   </div>
-  <div class="no-print"><h5 class="fw-bold">該梯次人員(勾選完訓)</h5>
-   <table class="table tb"><thead class="table-dark"><tr><th>單位</th><th>職稱</th><th>姓名</th><th>完訓</th></tr></thead><tbody id="doneTb"></tbody></table></div>
+  <div class="no-print"><div class="d-flex justify-content-between align-items-center mb-2"><h5 class="fw-bold mb-0">該梯次人員(勾選完訓)</h5>
+   <button id="saveDoneBtn" class="btn btn-success fw-bold" onclick="saveDone()" disabled>儲存完訓勾選</button></div>
+   <table class="table tb"><thead class="table-dark"><tr><th>單位</th><th>職稱</th><th>姓名</th><th>完訓<br><input type="checkbox" onchange="allDone(this.checked)" title="本梯次全選"></th></tr></thead><tbody id="doneTb"></tbody></table></div>
   <div id="printArea"><h4 class="text-center fw-bold">金門縣消防人力動員教育訓練 簽到表</h4><h5 class="text-center" id="pTitle"></h5>
    <table class="table tb"><thead><tr><th>編號</th><th>單位</th><th>職稱</th><th>姓名</th><th>簽到</th><th>簽退</th><th>備註</th></tr></thead><tbody id="signTb"></tbody></table></div>
-  <div class="no-print"><h5 class="fw-bold mt-4">統計</h5>
+  <div class="no-print"><h5 class="fw-bold mt-4">各梯次參訓人數</h5>
+   <table class="table tb table-striped"><thead class="table-success" id="dateHead"></thead><tbody id="dateTb"></tbody></table>
+   <h5 class="fw-bold mt-4">各單位統計</h5>
    <table class="table tb table-striped"><thead class="table-primary"><tr><th>身份</th><th>單位</th><th>人數</th><th>報名人數</th><th>完訓人數</th><th>完訓比例</th></tr></thead><tbody id="statTb"></tbody></table></div>
  </div>
 </div>
 </div></div>
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script>
-const API='https://script.google.com/macros/s/AKfycby2XG3qFDiBkFTO5z5mVTUjrLnxayvBp0N3Qc2BfYkgINwHxuCpTTDrKoBAwEtw7RER/exec';   // ← 部署 Apps Script 後取得
+const API='https://script.google.com/macros/s/AKfycbz8gidoxtfMhqFTjrxhvkgesCGwWLPlylcFlxdyR9P0wsPmYdmwuZSrqP6_j46G9nDD/exec';   // ← 部署 Apps Script 後取得
 const $=id=>document.getElementById(id);
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 let dates=[],list=[],adm=[],pw='';
@@ -116,6 +121,8 @@ async function savePub(){
 
 /* ---------- 管理員 ---------- */
 async function login(){
+  if(Object.keys(dirty).length && !confirm('有尚未儲存的完訓勾選,重新整理會遺失,確定嗎?')) return;
+  dirty={}; updBtn();
   pw=$('pw').value||pw;
   const j=await call({action:'adminList',pw}); if(!j) return;
   adm=j.people; dates=j.dates; const cur=$('admDate').value;
@@ -125,7 +132,7 @@ const sel=()=>adm.filter(p=>p.date&&p.date===$('admDate').value);
 function showDate(){
   const d=$('admDate').value, ps=sel(); $('pTitle').textContent=d?`訓練日期:${d}`:'';
   $('doneTb').innerHTML=ps.map(p=>`<tr><td>${esc(un(p))}</td><td>${esc(p.title)}</td><td>${esc(p.name)}</td>
-    <td><input type="checkbox" ${p.done?'checked':''} onchange="setDone('${esc(p.id)}',this)"></td></tr>`).join('')
+    <td><input type="checkbox" ${p.done?'checked':''} onchange="markDone('${esc(p.id)}',this.checked)"></td></tr>`).join('')
     ||'<tr><td colspan="4">該梯次目前無人報名</td></tr>';
   $('signTb').innerHTML=signRows(ps);
 }
@@ -135,15 +142,44 @@ function signRows(ps){
   for(let i=0;i<5;i++) h+=`<tr style="height:42px"><td>${ps.length+i+1}</td><td></td><td></td><td></td><td></td><td></td><td></td></tr>`;
   return h;
 }
-async function setDone(id,cb){
-  const j=await call({action:'setDone',pw,id,done:cb.checked});
-  if(!j){ cb.checked=!cb.checked; return; }
-  adm.find(p=>p.id===id).done=cb.checked; stats();
+let dirty={};
+function markDone(id,v){ adm.find(p=>p.id===id).done=v; dirty[id]=v; updBtn(); stats(); }
+function allDone(v){ sel().forEach(p=>{p.done=v;dirty[p.id]=v;}); showDate(); updBtn(); stats(); }
+function updBtn(){ const n=Object.keys(dirty).length; $('saveDoneBtn').disabled=!n;
+  $('saveDoneBtn').textContent=n?`儲存完訓勾選(${n} 筆待儲存)`:'儲存完訓勾選'; }
+async function saveDone(){
+  const items=Object.entries(dirty).map(([id,done])=>({id,done}));
+  const j=await call({action:'setDone',pw,items}); if(!j) return;
+  dirty={}; updBtn(); alert(`已儲存 ${j.count} 筆`);
 }
-function stats(){
+window.addEventListener('beforeunload',e=>{ if(Object.keys(dirty).length){e.preventDefault();e.returnValue='';} });
+function dateStats(){
+  const roles=[...new Set(adm.map(p=>p.role))];
+  $('dateHead').innerHTML='<tr><th>梯次</th>'+roles.map(r=>`<th>${esc(r)}</th>`).join('')+'<th>合計</th><th>素食</th><th>完訓</th></tr>';
+  const row=(label,ps)=>`<tr><td>${esc(label)}</td>`+roles.map(r=>`<td>${ps.filter(p=>p.role===r).length}</td>`).join('')+
+    `<td class="fw-bold">${ps.length}</td><td>${ps.filter(p=>p.veg).length}</td><td>${ps.filter(p=>p.done).length}</td></tr>`;
+  const reg=adm.filter(p=>p.date);
+  $('dateTb').innerHTML=dates.map(d=>row(d,adm.filter(p=>p.date===d))).join('')
+    +`<tr class="table-warning fw-bold">${row('已報名合計',reg).slice(4)}`
+    +`<tr class="table-light">${row('尚未報名',adm.filter(p=>!p.date)).slice(4)}`;
+}
+function stats(){ dateStats();
   const g={}; adm.forEach(p=>{const k=p.role+'|'+p.unit; const x=g[k]=g[k]||{role:p.role,unit:p.unit,t:0,r:0,d:0};
     x.t++; if(p.date)x.r++; if(p.done)x.d++;});
   $('statTb').innerHTML=Object.values(g).map(x=>`<tr><td>${esc(x.role)}</td><td>${esc(x.unit)}</td><td>${x.t}</td><td>${x.r}</td><td>${x.d}</td><td>${Math.round(x.d/x.t*100)}%</td></tr>`).join('');
+}
+
+/* ---------- 匯出義消公假名單 ---------- */
+function exportLeave(){
+  const d=$('admDate').value;   // 有選梯次就只匯出該梯次,沒選則匯出全部梯次
+  const ps=adm.filter(p=>p.role==='義消'&&p.date&&p.leave&&(!d||p.date===d))
+    .sort((a,b)=>a.leave.localeCompare(b.leave,'zh-Hant')||a.date.localeCompare(b.date)||a.unit.localeCompare(b.unit,'zh-Hant'));
+  if(!ps.length) return alert(d?'該梯次沒有填寫公假單位的義消':'目前沒有填寫公假單位的義消');
+  const aoa=[['序號','公假單位','訓練梯次','大隊/單位','職稱','姓名','完訓']].concat(
+    ps.map((p,i)=>[i+1,p.leave,p.date,p.unit,p.title,p.name,p.done?'是':'']));
+  const ws=XLSX.utils.aoa_to_sheet(aoa); ws['!cols']=[{wch:6},{wch:24},{wch:12},{wch:14},{wch:10},{wch:10},{wch:6}];
+  const wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb,ws,'義消公假名單');
+  XLSX.writeFile(wb,`義消公假名單${d?'_'+d.replace(/\//g,''):'_全部'}.xlsx`);
 }
 
 /* ---------- Word 匯出 ---------- */
